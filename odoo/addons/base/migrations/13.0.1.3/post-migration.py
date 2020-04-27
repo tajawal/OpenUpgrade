@@ -95,7 +95,7 @@ def delete_noupdate_records(env):
 
 @openupgrade.migrate()
 def migrate(env, version):
-    res_lang_week_start_map_values(env)
+    # res_lang_week_start_map_values(env)
     fix_res_partner_image(env)
     ir_actions_binding_type_views(env)
     fill_ir_cron_lastcall(env)

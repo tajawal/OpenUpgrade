@@ -509,6 +509,12 @@ xmlid_renames_ir_model_access = [
     ('web.access_report_layout', 'base.access_report_layout'),
 ]
 
+xml_id_renames_res_users = [
+    ('auth_signup.default_template_user', 'base.template_portal_user_id'),
+    ('auth_signup.default_template_user_config',
+     'base.default_template_user_config'),
+]
+
 lang_code_renames = [
     ('ar_AA', 'ar_001'),
     ('fil', 'fil_PH'),
@@ -530,9 +536,9 @@ column_renames = {
         ('datas_fname', 'name'),
         ("res_name", None)
     ],
-    'res_lang': [
-        ('week_start', None),
-    ],
+    # 'res_lang': [
+    #     ('week_start', None),
+    # ],
     'res_partner': [
         ("customer", None),
         ("supplier", None)
@@ -576,6 +582,10 @@ def fix_lang_table(cr):
             (new_code, old_code)
         )
 
+    openupgrade.logged_query(
+        cr,
+        "UPDATE res_lang set name=%s, iso_code = %s WHERE code=%s",
+        ("Arabic (Syria) / الْعَرَبيّة", 'ar_SY', "ar_SY"))
 
 def remove_invoice_table_relations(env):
     # for custom modules that have many2many relations to invoice models
@@ -741,6 +751,34 @@ def migrate(env, version):
     openupgrade.rename_fields(env, field_renames, no_deep=True)
     openupgrade.rename_xmlids(env.cr, xmlid_renames_res_country_state)
     openupgrade.rename_xmlids(env.cr, xmlid_renames_ir_model_access)
+    openupgrade.rename_xmlids(env.cr, xml_id_renames_res_users)
+
+    # Make the system and admin user XML ids refer to the same entry for now to
+    # prevent errors when base data is loaded. The users are picked apart in
+    # this module's end stage migration script.
+    # Safely, we check first if the `base.user_admin` already exists to
+    # avoid possible conflicts: very old databases may have this record.
+    env.cr.execute("""
+        SELECT id
+        FROM ir_model_data
+        WHERE name='user_admin' AND module='base' AND model='res.users'""")
+    if env.cr.fetchone():
+        env.cr.execute("""
+            UPDATE ir_model_data
+            SET model='res.users',res_id=1,noupdate=true
+            WHERE name='user_admin' AND module='base' AND model='res.users'""")
+    else:
+        env.cr.execute("""
+            INSERT INTO ir_model_data
+            (module, name, model, res_id, noupdate)
+            VALUES('base', 'user_admin', 'res.users', 1, true)""")
+    env.cr.execute(
+        """ INSERT INTO ir_model_data
+        (module, name, model, res_id, noupdate)
+        (SELECT module, 'partner_admin', model, res_id, noupdate
+         FROM ir_model_data WHERE module = 'base' AND name = 'partner_root')
+        """)
+
     fill_ir_model_data_noupdate(env)
     fix_lang_table(env.cr)
     remove_offending_translations(env)
